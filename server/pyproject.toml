@@ -70,6 +70,7 @@ dev = [
 doc-mcp = "doc_builder.main:main"
 doc-mcp-setup = "doc_builder.cli.setup:main"
 doc-mcp-status = "doc_builder.cli.status:main"
+doc-mcp-index = "doc_builder.cli.index:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/doc_builder"]
