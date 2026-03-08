@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "doc-builder": {
+      "command": "python",
+      "args": ["-m", "doc_builder", "--transport", "stdio"],
+      "env": {
+        "NEO4J_URI": "${env:NEO4J_URI}",
+        "NEO4J_USERNAME": "${env:NEO4J_USERNAME}",
+        "NEO4J_PASSWORD": "${env:NEO4J_PASSWORD}",
+        "LLM_MODE": "${env:LLM_MODE}",
+        "LITELLM_BASE_URL": "${env:LITELLM_BASE_URL}",
+        "LITELLM_API_KEY": "${env:LITELLM_API_KEY}",
+        "LITELLM_MODEL": "${env:LITELLM_MODEL}"
+      }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# MCP Doc Builder - Docker Compose
+# ═══════════════════════════════════════════════════════════════════════════════
+# Neo4j instance for documentation graph and vector storage
+#
+# Usage:
+#   docker compose up -d          # Start Neo4j
+#   docker compose down           # Stop Neo4j
+#   docker compose logs -f neo4j  # View logs
+#
+# Access:
+#   Browser: http://localhost:7475
+#   Bolt: bolt://localhost:7688
+#
+# Note: Uses different ports (7475/7688) to avoid conflicts with mcp-kg-memory
+
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: doc-builder-neo4j
+    ports:
+      - "7475:7474"   # HTTP Browser (different from kg-memory: 7474)
+      - "7688:7687"   # Bolt protocol (different from kg-memory: 7687)
+    environment:
+      - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-password123}
+      - NEO4J_PLUGINS=["apoc"]
+      # Memory tuning
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1G
+      - NEO4J_server_memory_pagecache_size=512m
+      # Enable vector index
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    volumes:
+      - doc_neo4j_data:/data
+      - doc_neo4j_logs:/logs
+      - doc_neo4j_plugins:/plugins
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - doc-builder-network
+
+networks:
+  doc-builder-network:
+    driver: bridge
+
+volumes:
+  doc_neo4j_data:
+    name: doc-builder-neo4j-data
+  doc_neo4j_logs:
+    name: doc-builder-neo4j-logs
+  doc_neo4j_plugins:
+    name: doc-builder-neo4j-plugins
