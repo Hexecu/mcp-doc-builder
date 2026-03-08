@@ -709,6 +709,19 @@ def show_status(state: IndexState):
 
 def main():
     """Main entry point for doc-mcp-index command."""
+    # Load environment variables from .env file
+    from pathlib import Path
+    from dotenv import load_dotenv
+    
+    # Try to find .env file in project directory
+    project_dir = Path(__file__).parent.parent.parent.parent.parent
+    env_file = project_dir / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
+    else:
+        # Try current directory
+        load_dotenv()
+    
     parser = argparse.ArgumentParser(
         description="Index documentation for MCP Doc Builder",
         formatter_class=argparse.RawDescriptionHelpFormatter,

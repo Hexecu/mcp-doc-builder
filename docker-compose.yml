@@ -22,7 +22,7 @@ services:
       - "7475:7474"   # HTTP Browser (different from kg-memory: 7474)
       - "7688:7687"   # Bolt protocol (different from kg-memory: 7687)
     environment:
-      - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-password123}
+      - NEO4J_AUTH=neo4j/password123
       - NEO4J_PLUGINS=["apoc"]
       # Memory tuning
       - NEO4J_server_memory_heap_initial__size=512m
