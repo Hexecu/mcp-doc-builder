@@ -28,6 +28,10 @@ class CrawlTask:
     url: str
     depth: int
     priority: float = 0.5
+    
+    def __lt__(self, other: "CrawlTask") -> bool:
+        """Enable comparison for PriorityQueue."""
+        return self.priority > other.priority  # Higher priority first
     parent_url: str | None = None
 
 
@@ -159,12 +163,9 @@ class Spider:
         """
         self._on_page_callback = callback
 
-    async def crawl(self) -> AsyncIterator[CrawlResult]:
+    async def crawl(self) -> None:
         """
-        Start crawling and yield results.
-        
-        Yields:
-            CrawlResult for each page crawled
+        Start crawling. Results are delivered via on_page callback.
         """
         self._running = True
         self._stats = CrawlStats()
@@ -192,21 +193,18 @@ class Spider:
             ]
 
             try:
-                # Process results as they come in
-                while self._running:
-                    if self._stats.pages_crawled >= self.max_pages:
-                        logger.info(f"Reached max pages limit: {self.max_pages}")
-                        break
-
-                    if self._queue.empty() and all(w.done() for w in workers):
-                        break
-
-                    await asyncio.sleep(0.1)
-
+                # Wait for all tasks in queue to be processed
+                await self._queue.join()
+                
+            except asyncio.CancelledError:
+                logger.info("Crawl cancelled")
             finally:
                 self._running = False
+                # Cancel workers
                 for worker in workers:
                     worker.cancel()
+                # Wait for workers to finish
+                await asyncio.gather(*workers, return_exceptions=True)
 
         logger.info(
             f"Crawl completed: {self._stats.pages_crawled} pages, "
@@ -221,15 +219,13 @@ class Spider:
         Returns:
             List of all CrawlResults
         """
-        results = []
+        results: list[CrawlResult] = []
 
         def collect_result(result: CrawlResult):
             results.append(result)
 
         self.on_page(collect_result)
-
-        async for result in self.crawl():
-            pass  # Results collected via callback
+        await self.crawl()
 
         return results
 
@@ -421,7 +417,6 @@ async def crawl_documentation(
     if on_page:
         spider.on_page(on_page)
 
-    async for _ in spider.crawl():
-        pass
+    await spider.crawl()
 
     return spider.stats

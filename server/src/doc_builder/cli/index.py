@@ -510,7 +510,7 @@ async def index_documentation(
 
             # Run crawler with timeout
             try:
-                crawl_task = asyncio.create_task(spider.crawl_all())
+                crawl_task = asyncio.create_task(spider.crawl())
                 await asyncio.wait_for(crawl_task, timeout=INDEX_TIMEOUT_SECONDS)
             except asyncio.TimeoutError:
                 console.print(f"[yellow]Timeout reached for {doc_name}[/yellow]")
@@ -791,6 +791,11 @@ Examples:
         metavar="SOURCE_ID",
         help="Clear failed pages for a source",
     )
+    parser.add_argument(
+        "-y", "--yes",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
 
     args = parser.parse_args()
     state = IndexState()
@@ -866,7 +871,7 @@ Examples:
         console.print(f"    [dim]{url}[/dim]")
 
     console.print()
-    if not Confirm.ask("Start indexing?", default=True):
+    if not args.yes and not Confirm.ask("Start indexing?", default=True):
         console.print("[dim]Cancelled.[/dim]")
         return
 
