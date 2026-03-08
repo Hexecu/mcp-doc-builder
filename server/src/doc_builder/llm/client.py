@@ -220,10 +220,11 @@ class LLMClient:
             }
         else:
             # Direct Gemini embedding
-            if not embed_model.startswith("text-embedding"):
-                embed_model = f"text-embedding-004"
+            # Use model from settings, prepend gemini/ prefix if needed
+            if not embed_model.startswith("gemini/"):
+                embed_model = f"gemini/{embed_model}"
             kwargs = {
-                "model": f"gemini/{embed_model}",
+                "model": embed_model,
                 "api_key": self.settings.gemini_api_key,
             }
 

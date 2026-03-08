@@ -94,13 +94,13 @@ FOR (c:DocConcept) ON EACH [c.name, c.description];
 // Vector Index for Semantic Search
 // ─────────────────────────────────────────────────────────────────────────────────
 
-// Vector index on DocChunk embeddings (1536 dimensions for text-embedding-3-small)
+// Vector index on DocChunk embeddings (3072 dimensions for gemini-embedding-001)
 // NOTE: This must be created separately after data exists, using:
 // CALL db.index.vector.createNodeIndex(
 //   'doc_chunk_embeddings',
 //   'DocChunk',
 //   'embedding',
-//   1536,
+//   3072,
 //   'cosine'
 // )
 

@@ -52,9 +52,9 @@ class Settings(BaseSettings):
     litellm_api_key: str | None = Field(default=None)
     litellm_model: str = Field(default="gemini-2.5-flash")
 
-    # Embedding Model (Gemini text-embedding-004)
-    embedding_model: str = Field(default="text-embedding-004")
-    embedding_dimensions: int = Field(default=768)
+    # Embedding Model (Gemini embedding - gemini-embedding-001 produces 3072 dims)
+    embedding_model: str = Field(default="gemini-embedding-001")
+    embedding_dimensions: int = Field(default=3072)
 
     # Task-specific model routing
     doc_model_default: str | None = Field(
