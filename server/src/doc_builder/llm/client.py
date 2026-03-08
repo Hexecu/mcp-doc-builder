@@ -49,9 +49,15 @@ class LLMClient:
         active_model = model or self.settings.active_model
 
         if self.settings.llm_mode in ("litellm", "both") and self.settings.litellm_base_url:
-            kwargs["base_url"] = self.settings.litellm_base_url
+            # LiteLLM Gateway mode - force OpenAI-compatible API
+            kwargs["api_base"] = self.settings.litellm_base_url.rstrip("/")
             kwargs["api_key"] = self.settings.litellm_api_key
-            kwargs["model"] = active_model
+            kwargs["custom_llm_provider"] = "openai"
+            # Remove any provider prefix from model name for gateway
+            if "/" in active_model:
+                kwargs["model"] = active_model.split("/")[-1]
+            else:
+                kwargs["model"] = active_model
         elif self.settings.llm_mode == "gemini_direct":
             kwargs["api_key"] = self.settings.gemini_api_key
             # Ensure gemini/ prefix for direct mode
@@ -205,11 +211,12 @@ class LLMClient:
 
         # Ensure proper model format for embedding
         if self.settings.llm_mode in ("litellm", "both") and self.settings.litellm_base_url:
-            # Use LiteLLM gateway
+            # Use LiteLLM gateway with OpenAI-compatible API
             kwargs = {
                 "model": embed_model,
-                "api_base": self.settings.litellm_base_url,
+                "api_base": self.settings.litellm_base_url.rstrip("/"),
                 "api_key": self.settings.litellm_api_key,
+                "custom_llm_provider": "openai",
             }
         else:
             # Direct Gemini embedding
