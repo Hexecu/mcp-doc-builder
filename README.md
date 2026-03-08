@@ -47,9 +47,65 @@ MCP Doc Builder is a Model Context Protocol (MCP) server that provides:
 
 ### 2. Installation
 
+You can install `doc-builder-mcp` globally using `pipx` (recommended) or in a local virtual environment.
+
+#### Option 1: One-Line Install (Recommended)
+
 ```bash
-cd mcp-doc-builder/server
-pip install -e .
+# Install the package
+pipx install doc-builder-mcp
+
+# Run the interactive Setup Wizard
+doc-mcp-setup
+```
+
+The wizard will:
+1.  Check for Docker and Neo4j.
+2.  Ask for your **LiteLLM / Gemini Credentials**.
+3.  Configure the **LLM Mode** (LiteLLM vs Gemini Direct).
+4.  Generate a secure `.env` file.
+
+<details>
+<summary>❓ Don't have <code>pipx</code>? Click here to install it</summary>
+
+**macOS:**
+```bash
+brew install pipx
+pipx ensurepath
+```
+
+**Windows:**
+```bash
+winget install pipx
+pipx ensurepath
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install pipx
+pipx ensurepath
+```
+
+*Restart your terminal after installing pipx.*
+
+</details>
+
+#### Alternative: Standard Pip
+
+If you prefer not to use pipx:
+```bash
+pip install doc-builder-mcp
+doc-mcp-setup
+```
+
+#### Option 2: Manual Development Setup
+
+If you want to contribute or modify the code:
+
+```bash
+git clone https://github.com/Hexecu/mcp-doc-builder.git
+cd mcp-doc-builder
+make full-setup
 ```
 
 ### 3. Setup
@@ -69,19 +125,22 @@ cp ../.env.example ../.env
 
 ### 4. Start Neo4j
 
+Start the Neo4j database natively with docker or using the provided Makefile:
+
 ```bash
-cd mcp-doc-builder
-docker compose up -d
+make neo4j-up
 ```
+
+*This uses the `docker-compose.yml` to start the Neo4j instance.*
 
 ### 5. Run the Server
 
 ```bash
 # STDIO mode (for IDE integration)
-python -m doc_builder --transport stdio
+make server-stdio
 
 # HTTP mode (for API access)
-python -m doc_builder --transport http --port 8001
+make server
 ```
 
 ## Configuration
