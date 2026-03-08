@@ -28,11 +28,11 @@ class CrawlTask:
     url: str
     depth: int
     priority: float = 0.5
+    parent_url: str | None = None
     
     def __lt__(self, other: "CrawlTask") -> bool:
         """Enable comparison for PriorityQueue."""
         return self.priority > other.priority  # Higher priority first
-    parent_url: str | None = None
 
 
 @dataclass
