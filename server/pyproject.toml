@@ -57,6 +57,12 @@ dependencies = [
     "google-auth>=2.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Hexecu/mcp-doc-builder"
+Documentation = "https://github.com/Hexecu/mcp-doc-builder#readme"
+Repository = "https://github.com/Hexecu/mcp-doc-builder"
+Issues = "https://github.com/Hexecu/mcp-doc-builder/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
