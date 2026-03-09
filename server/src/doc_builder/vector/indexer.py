@@ -37,6 +37,19 @@ class IndexStats:
     chunks_updated: int = 0
     chunks_failed: int = 0
     total_tokens: int = 0
+    empty_pages: int = 0
+    embedding_failures: int = 0
+    
+    def __add__(self, other: "IndexStats") -> "IndexStats":
+        """Add two IndexStats together."""
+        return IndexStats(
+            chunks_created=self.chunks_created + other.chunks_created,
+            chunks_updated=self.chunks_updated + other.chunks_updated,
+            chunks_failed=self.chunks_failed + other.chunks_failed,
+            total_tokens=self.total_tokens + other.total_tokens,
+            empty_pages=self.empty_pages + other.empty_pages,
+            embedding_failures=self.embedding_failures + other.embedding_failures,
+        )
 
 
 class VectorIndexer:
@@ -87,7 +100,9 @@ class VectorIndexer:
         stats = IndexStats()
 
         if not content or not content.strip():
-            logger.warning(f"Empty content for page {page_id}")
+            # Use debug instead of warning for empty pages
+            logger.debug(f"Empty content for page {page_id}")
+            stats.empty_pages = 1
             return stats
 
         # Delete existing chunks for this page
@@ -108,8 +123,19 @@ class VectorIndexer:
         texts = [chunk.content for chunk in chunks]
         embeddings = await self.embedder.embed_batch(texts)
 
+        # Check for embedding failures (zero vectors)
+        for i, embedding in enumerate(embeddings):
+            if all(v == 0.0 for v in embedding[:10]):  # Check first 10 values
+                stats.embedding_failures += 1
+
         # Store each chunk
         for chunk, embedding in zip(chunks, embeddings):
+            # Skip chunks with failed embeddings (zero vectors)
+            if all(v == 0.0 for v in embedding[:10]):
+                logger.debug(f"Skipping chunk {chunk.index} with zero embedding")
+                stats.chunks_failed += 1
+                continue
+                
             try:
                 await self.repo.create_chunk(
                     page_id=page_id,
@@ -126,10 +152,16 @@ class VectorIndexer:
                 logger.error(f"Failed to create chunk {chunk.index} for page {page_id}: {e}")
                 stats.chunks_failed += 1
 
-        logger.info(
-            f"Indexed page {page_id}: {stats.chunks_created} chunks, "
-            f"{stats.total_tokens} tokens"
-        )
+        if stats.chunks_created > 0:
+            logger.info(
+                f"Indexed page {page_id}: {stats.chunks_created} chunks, "
+                f"{stats.total_tokens} tokens"
+                + (f", {stats.embedding_failures} embedding failures" if stats.embedding_failures > 0 else "")
+            )
+        elif stats.empty_pages > 0:
+            logger.debug(f"Skipped empty page {page_id}")
+        else:
+            logger.debug(f"No chunks created for page {page_id}")
 
         return stats
 

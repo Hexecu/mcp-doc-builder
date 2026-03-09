@@ -12,6 +12,9 @@ from doc_builder.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+# Hard limit to stay well under embedding model context window (8192 for text-embedding-3-small)
+ABSOLUTE_MAX_TOKENS = 2000
+
 
 @dataclass
 class Chunk:
@@ -30,10 +33,10 @@ class Chunk:
 class ChunkerConfig:
     """Configuration for the chunker."""
 
-    target_size: int = 800  # Target tokens per chunk
-    overlap: int = 100  # Overlap tokens between chunks
-    min_size: int = 100  # Minimum chunk size
-    max_size: int = 1500  # Maximum chunk size
+    target_size: int = 500  # Target tokens per chunk (reduced from 800)
+    overlap: int = 50  # Overlap tokens between chunks (reduced from 100)
+    min_size: int = 50  # Minimum chunk size
+    max_size: int = 1000  # Maximum chunk size (reduced from 1500)
 
 
 class SmartChunker:
@@ -131,8 +134,11 @@ class SmartChunker:
         # Merge small chunks and split large ones
         sized_chunks = self._enforce_size_limits(raw_chunks)
 
+        # HARD LIMIT: Ensure no chunk exceeds absolute max tokens
+        safe_chunks = self._enforce_absolute_limit(sized_chunks)
+
         # Add overlap between chunks
-        overlapped_chunks = self._add_overlap(sized_chunks)
+        overlapped_chunks = self._add_overlap(safe_chunks)
 
         # Create final Chunk objects
         chunks = []
@@ -292,6 +298,61 @@ class SmartChunker:
             result.append(current.strip())
 
         return result
+
+    def _enforce_absolute_limit(self, chunks: list[str]) -> list[str]:
+        """
+        Enforce absolute maximum token limit on all chunks.
+        
+        This is a safety net to ensure no chunk exceeds the embedding model's
+        context window, even after all other processing.
+        """
+        result = []
+        
+        for chunk in chunks:
+            token_count = self.count_tokens(chunk)
+            
+            if token_count <= ABSOLUTE_MAX_TOKENS:
+                result.append(chunk)
+            else:
+                # Force split the chunk
+                logger.debug(f"Chunk exceeds {ABSOLUTE_MAX_TOKENS} tokens ({token_count}), force splitting")
+                split_chunks = self._force_split_chunk(chunk, ABSOLUTE_MAX_TOKENS)
+                result.extend(split_chunks)
+        
+        return result
+
+    def _force_split_chunk(self, chunk: str, max_tokens: int) -> list[str]:
+        """
+        Force split a chunk that exceeds the absolute limit.
+        
+        Uses aggressive splitting to ensure compliance.
+        """
+        result = []
+        encoder = self._get_encoder()
+        
+        if encoder:
+            # Token-based splitting
+            tokens = encoder.encode(chunk)
+            
+            for i in range(0, len(tokens), max_tokens - 50):  # Small buffer
+                chunk_tokens = tokens[i:i + max_tokens - 50]
+                chunk_text = encoder.decode(chunk_tokens)
+                if chunk_text.strip():
+                    result.append(chunk_text.strip())
+        else:
+            # Character-based fallback
+            max_chars = max_tokens * 4
+            
+            for i in range(0, len(chunk), max_chars - 200):
+                chunk_text = chunk[i:i + max_chars - 200]
+                # Try to end at sentence boundary
+                last_period = chunk_text.rfind('.')
+                if last_period > len(chunk_text) // 2:
+                    chunk_text = chunk_text[:last_period + 1]
+                if chunk_text.strip():
+                    result.append(chunk_text.strip())
+        
+        return result if result else [chunk[:max_tokens * 4]]  # Fallback truncation
 
     def _add_overlap(self, chunks: list[str]) -> list[str]:
         """Add overlapping content between chunks."""

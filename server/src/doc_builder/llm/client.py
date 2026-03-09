@@ -5,17 +5,29 @@ Supports both Gemini Direct and LiteLLM Gateway modes.
 
 import json
 import logging
+import re
 from typing import Any, TypeVar
 
 import litellm
-from pydantic import BaseModel
-from tenacity import retry, stop_after_attempt, wait_exponential
+from pydantic import BaseModel, ValidationError
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
 
 from doc_builder.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+# Retry configuration
+MAX_RETRIES = 5
+MIN_WAIT = 2
+MAX_WAIT = 60
 
 
 class LLMClient:
@@ -71,8 +83,9 @@ class LLMClient:
         return kwargs
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(MAX_RETRIES),
+        wait=wait_exponential(multiplier=1, min=MIN_WAIT, max=MAX_WAIT),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def complete(
         self,
@@ -113,8 +126,9 @@ class LLMClient:
             raise
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(MAX_RETRIES),
+        wait=wait_exponential(multiplier=1, min=MIN_WAIT, max=MAX_WAIT),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def complete_structured(
         self,
@@ -126,6 +140,12 @@ class LLMClient:
     ) -> T:
         """
         Generate a structured completion using JSON mode.
+        
+        Features:
+        - JSON mode for structured output
+        - Automatic retry on failure (up to MAX_RETRIES)
+        - JSON repair for malformed responses
+        - Fallback to re-prompt if JSON parsing fails
         
         Args:
             messages: List of message dicts
@@ -170,27 +190,117 @@ class LLMClient:
 
             content = response.choices[0].message.content or "{}"
 
-            # Parse JSON response
+            # Parse JSON response with repair
+            data = self._parse_json_response(content)
+            
             try:
-                data = json.loads(content)
-            except json.JSONDecodeError:
-                # Try to extract JSON from markdown code block
-                import re
-                match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
-                if match:
-                    data = json.loads(match.group(1))
-                else:
-                    raise
+                return response_model.model_validate(data)
+            except ValidationError as e:
+                logger.warning(f"Validation failed, attempting re-prompt: {e}")
+                # Try re-prompting for clean JSON
+                return await self._retry_structured_completion(
+                    modified_messages,
+                    response_model,
+                    completion_kwargs,
+                    temperature,
+                    **kwargs,
+                )
 
-            return response_model.model_validate(data)
-
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode failed after repair attempt: {e}")
+            raise
         except Exception as e:
             logger.error(f"Structured completion failed: {e}")
             raise
+    
+    def _parse_json_response(self, content: str) -> dict[str, Any]:
+        """
+        Parse JSON response with repair for common issues.
+        
+        Args:
+            content: Raw response content
+            
+        Returns:
+            Parsed JSON dict
+        """
+        # Try direct parse first
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+        
+        # Try to extract JSON from markdown code block
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
+        # Try to find JSON object boundaries
+        start = content.find('{')
+        end = content.rfind('}')
+        if start >= 0 and end > start:
+            json_str = content[start:end + 1]
+            
+            # Fix common issues
+            json_str = re.sub(r',\s*}', '}', json_str)  # Trailing commas
+            json_str = re.sub(r',\s*]', ']', json_str)  # Trailing commas in arrays
+            json_str = json_str.replace('\n', ' ')
+            
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                pass
+        
+        # Last resort - raise
+        raise json.JSONDecodeError("Could not parse JSON from response", content, 0)
+    
+    async def _retry_structured_completion(
+        self,
+        messages: list[dict[str, str]],
+        response_model: type[T],
+        completion_kwargs: dict[str, Any],
+        temperature: float,
+        **kwargs,
+    ) -> T:
+        """
+        Retry structured completion with explicit JSON request.
+        
+        Args:
+            messages: Original messages
+            response_model: Pydantic model for response
+            completion_kwargs: LiteLLM kwargs
+            temperature: Sampling temperature
+            **kwargs: Additional arguments
+            
+        Returns:
+            Parsed Pydantic model instance
+        """
+        # Add explicit JSON-only instruction
+        retry_messages = messages.copy()
+        retry_messages.append({
+            "role": "user",
+            "content": "Please provide the response as valid JSON only, with no markdown formatting or code blocks. Just raw JSON.",
+        })
+        
+        response = await litellm.acompletion(
+            messages=retry_messages,
+            temperature=max(0.1, temperature - 0.2),  # Lower temperature for retry
+            response_format={"type": "json_object"},
+            **completion_kwargs,
+            **kwargs,
+        )
+        
+        content = response.choices[0].message.content or "{}"
+        data = self._parse_json_response(content)
+        
+        return response_model.model_validate(data)
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(MAX_RETRIES),
+        wait=wait_exponential(multiplier=1, min=MIN_WAIT, max=MAX_WAIT),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def embed(
         self,

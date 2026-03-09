@@ -65,6 +65,14 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.9.0",
 ]
+# Install with: pip install -e ".[js]"
+# Then run: playwright install chromium
+js = [
+    "playwright>=1.40.0",
+]
+all = [
+    "doc-builder-mcp[dev,js]",
+]
 
 [project.scripts]
 doc-mcp = "doc_builder.main:main"

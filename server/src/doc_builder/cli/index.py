@@ -360,6 +360,10 @@ async def index_documentation(
         "total_chunks": 0,
         "total_concepts": 0,
         "failed_pages": 0,
+        "empty_pages": 0,
+        "embedding_failures": 0,
+        "ontology_errors": 0,
+        "sources_details": [],
     }
 
     # Setup signal handler for graceful interruption
@@ -403,7 +407,11 @@ async def index_documentation(
             "pages_crawled": 0,
             "pages_failed": 0,
             "chunks_created": 0,
+            "chunks_failed": 0,
             "concepts_extracted": 0,
+            "empty_pages": 0,
+            "embedding_failures": 0,
+            "ontology_errors": 0,
         }
 
         # Collected pages for relationship building
@@ -478,6 +486,9 @@ async def index_documentation(
                         heading_context=page.title,
                     )
                     stats["chunks_created"] += index_stats.chunks_created
+                    stats["chunks_failed"] += index_stats.chunks_failed
+                    stats["empty_pages"] += index_stats.empty_pages
+                    stats["embedding_failures"] += index_stats.embedding_failures
 
                     # Extract ontology
                     ontology_result = await extract_ontology(
@@ -488,6 +499,8 @@ async def index_documentation(
                         content=page.content,
                     )
                     stats["concepts_extracted"] += ontology_result.concepts_extracted
+                    if ontology_result.errors:
+                        stats["ontology_errors"] += len(ontology_result.errors)
 
                     # Update progress description
                     progress.update(
@@ -548,6 +561,17 @@ async def index_documentation(
         total_stats["total_pages"] += stats["pages_crawled"]
         total_stats["total_chunks"] += stats["chunks_created"]
         total_stats["total_concepts"] += stats["concepts_extracted"]
+        total_stats["empty_pages"] += stats["empty_pages"]
+        total_stats["embedding_failures"] += stats["embedding_failures"]
+        total_stats["ontology_errors"] += stats["ontology_errors"]
+        
+        # Store source details for report
+        total_stats["sources_details"].append({
+            "name": doc_name,
+            "url": doc_url,
+            "source_id": source_id,
+            **stats,
+        })
 
         # Show source summary
         console.print(
@@ -559,6 +583,14 @@ async def index_documentation(
         if stats["pages_failed"] > 0:
             console.print(
                 f"  [yellow]⚠ {stats['pages_failed']} pages failed[/yellow]"
+            )
+        if stats["empty_pages"] > 0:
+            console.print(
+                f"  [dim]ℹ {stats['empty_pages']} empty pages skipped[/dim]"
+            )
+        if stats["embedding_failures"] > 0:
+            console.print(
+                f"  [yellow]⚠ {stats['embedding_failures']} embedding failures[/yellow]"
             )
 
     # Close Neo4j connection
@@ -796,6 +828,12 @@ Examples:
         action="store_true",
         help="Skip confirmation prompt",
     )
+    parser.add_argument(
+        "--save-report",
+        type=str,
+        metavar="FILE",
+        help="Save detailed report to JSON file",
+    )
 
     args = parser.parse_args()
     state = IndexState()
@@ -887,15 +925,68 @@ Examples:
 
     # Show summary
     console.print()
+    
+    # Calculate success rate
+    total_attempted = stats['total_pages'] + stats['failed_pages']
+    success_rate = (stats['total_pages'] / total_attempted * 100) if total_attempted > 0 else 0
+    
+    # Build summary text
+    summary_lines = [
+        "[bold green]Indexing Complete![/bold green]\n",
+        f"Sources: {stats['sources_completed']} completed",
+        f"Pages crawled: {stats['total_pages']}",
+        f"Pages with content: {stats['total_pages'] - stats['empty_pages']} ({100 - (stats['empty_pages'] / max(stats['total_pages'], 1) * 100):.1f}%)",
+    ]
+    
+    if stats['empty_pages'] > 0:
+        summary_lines.append(f"Pages empty/skipped: {stats['empty_pages']}")
+    
+    summary_lines.extend([
+        f"Chunks created: {stats['total_chunks']}",
+    ])
+    
+    if stats['embedding_failures'] > 0:
+        summary_lines.append(f"Chunks failed: {stats['embedding_failures']}")
+    
+    summary_lines.append(f"Concepts extracted: {stats['total_concepts']}")
+    
+    if stats['ontology_errors'] > 0:
+        summary_lines.append(f"Ontology errors: {stats['ontology_errors']}")
+    
+    if stats['failed_pages'] > 0:
+        summary_lines.append(f"[yellow]Failed pages: {stats['failed_pages']}[/yellow]")
+    
+    summary_lines.append(f"\nSuccess rate: {success_rate:.1f}%")
+    
     console.print(Panel.fit(
-        f"[bold green]Indexing Complete![/bold green]\n\n"
-        f"Sources: {stats['sources_completed']} completed\n"
-        f"Pages: {stats['total_pages']}\n"
-        f"Chunks: {stats['total_chunks']}\n"
-        f"Concepts: {stats['total_concepts']}\n"
-        f"Failed pages: {stats['failed_pages']}",
+        "\n".join(summary_lines),
         border_style="green",
     ))
+    
+    # Save report if requested
+    if args.save_report:
+        report = {
+            "timestamp": datetime.now().isoformat(),
+            "summary": {
+                "sources_completed": stats['sources_completed'],
+                "sources_failed": stats['sources_failed'],
+                "total_pages": stats['total_pages'],
+                "pages_with_content": stats['total_pages'] - stats['empty_pages'],
+                "empty_pages": stats['empty_pages'],
+                "total_chunks": stats['total_chunks'],
+                "embedding_failures": stats['embedding_failures'],
+                "total_concepts": stats['total_concepts'],
+                "ontology_errors": stats['ontology_errors'],
+                "failed_pages": stats['failed_pages'],
+                "success_rate": success_rate,
+            },
+            "sources": stats.get('sources_details', []),
+            "failed_pages_details": state.state.get("failed_pages", {}),
+        }
+        
+        report_path = Path(args.save_report)
+        report_path.write_text(json.dumps(report, indent=2, default=str))
+        console.print(f"\n[dim]Report saved to: {report_path}[/dim]")
 
     if stats["failed_pages"] > 0:
         console.print()
