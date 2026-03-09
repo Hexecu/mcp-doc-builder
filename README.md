@@ -219,24 +219,62 @@ Explore extracted concepts and relationships.
 
 ## IDE Integration
 
-### VS Code / Cursor / Windsurf
+You can use this MCP server with any compatible AI coding assistant.
 
-Add to `.vscode/mcp.json`:
+### Antigravity (Google Deepmind)
+
+1. Open Antigravity Settings or locate your configuration file.
+2. Add the MCP server configuration:
+```json
+{
+  "mcpServers": {
+    "doc-builder": {
+      "command": "doc-mcp",
+      "args": [],
+      "env": {
+        "NEO4J_URI": "bolt://localhost:7688",
+        "NEO4J_PASSWORD": "your-password",
+        "LITELLM_API_KEY": "your-key"
+      }
+    }
+  }
+}
+```
+
+#### Recommended Antigravity Custom Rule
+To maximize the utility of `doc-builder`, add this specific rule to your Antigravity global profile or project guidelines (e.g., in `.gemini/rules.md` or global settings):
+
+> **Documentation Strategy Rule:**
+> "Whenever you encounter a new, unknown, or recently updated library, framework, or API that is not fully covered by your base training, you MUST proactively use the `doc_ingest` MCP tool to scrape and index its official documentation. Before writing complex implementation code for unfamiliar tools, always query `doc_search` or `doc_context` to understand the best practices and latest syntax."
+
+### Cursor
+
+Cursor supports MCP natively. To add the server:
+
+1. Open **Cursor Settings** (Cmd/Ctrl + Shift + J) > **Features** > **MCP**.
+2. Click **+ Add new MCP server**.
+3. Set the Type to `command`.
+4. Set the Name to `doc-builder`.
+5. Set the Command to `doc-mcp` (assuming you installed via `pipx`).
+6. Add the necessary environment variables (`NEO4J_PASSWORD`, `LITELLM_API_KEY`, etc.) directly in the Cursor UI environment section.
+
+### VS Code (with Claude Dev / Roo Code)
+
+If you use Claude Dev, Roo Code, or similar MCP clients in VS Code:
+
+1. Open the MCP configuration file (usually found at `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` on Mac).
+2. Add the server entry:
 
 ```json
 {
   "mcpServers": {
     "doc-builder": {
-      "command": "python",
-      "args": ["-m", "doc_builder", "--transport", "stdio"],
+      "command": "doc-mcp",
+      "args": [],
       "env": {
         "NEO4J_URI": "bolt://localhost:7688",
-        "NEO4J_USERNAME": "neo4j",
         "NEO4J_PASSWORD": "your-password",
-        "LLM_MODE": "litellm",
-        "LITELLM_BASE_URL": "https://your-gateway.com/",
-        "LITELLM_API_KEY": "your-key",
-        "LITELLM_MODEL": "gemini-2.5-flash"
+        "LITELLM_API_KEY": "your-key"
       }
     }
   }
