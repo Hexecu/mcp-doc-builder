@@ -745,13 +745,12 @@ def main():
     from pathlib import Path
     from dotenv import load_dotenv
     
-    # Try to find .env file in project directory
-    project_dir = Path(__file__).parent.parent.parent.parent.parent
-    env_file = project_dir / ".env"
-    if env_file.exists():
-        load_dotenv(env_file)
+    # Try to find .env file in ~/.doc-builder/.env first, then current dir
+    user_env = Path.home() / ".doc-builder" / ".env"
+    if user_env.exists():
+        load_dotenv(user_env)
     else:
-        # Try current directory
+        # Fallback to current directory
         load_dotenv()
     
     parser = argparse.ArgumentParser(

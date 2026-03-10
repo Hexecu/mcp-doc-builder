@@ -23,11 +23,10 @@ from rich.table import Table
 
 console = Console()
 
-# Paths
-PROJECT_DIR = Path(__file__).parent.parent.parent.parent.parent  # mcp-doc-builder/
-SERVER_DIR = PROJECT_DIR / "server"
-ENV_FILE = PROJECT_DIR / ".env"
-ENV_EXAMPLE = PROJECT_DIR / ".env.example"
+# Shared configuration paths
+USER_CONFIG_DIR = Path.home() / ".doc-builder"
+USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+ENV_FILE = USER_CONFIG_DIR / ".env"
 ANTIGRAVITY_CONFIG = Path.home() / ".gemini" / "antigravity" / "mcp_config.json"
 
 
@@ -389,8 +388,8 @@ class SetupWizard:
 
             try:
                 # Setup data directory
-                data_dir = PROJECT_DIR / "neo4j_data"
-                data_dir.mkdir(exist_ok=True)
+                data_dir = USER_CONFIG_DIR / "neo4j_data"
+                data_dir.mkdir(parents=True, exist_ok=True)
                 password = self.config.get("NEO4J_PASSWORD", "password123")
                 
                 # Cleanup existing container named doc-builder-neo4j without stopping it if not needed,

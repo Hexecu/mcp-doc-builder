@@ -197,6 +197,16 @@ async def run_status() -> None:
 def main():
     """Main entry point for status command."""
     import argparse
+    from pathlib import Path
+    from dotenv import load_dotenv
+    
+    # Try to find .env file in ~/.doc-builder/.env first, then current dir
+    user_env = Path.home() / ".doc-builder" / ".env"
+    if user_env.exists():
+        load_dotenv(user_env)
+    else:
+        # Fallback to current directory
+        load_dotenv()
     
     parser = argparse.ArgumentParser(description="MCP Doc Builder Status")
     parser.add_argument(

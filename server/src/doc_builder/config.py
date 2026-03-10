@@ -8,13 +8,14 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", str(Path.home() / ".doc-builder" / ".env")),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
