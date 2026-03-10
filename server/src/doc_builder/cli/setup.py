@@ -469,7 +469,7 @@ class SetupWizard:
             try:
                 # Load environment
                 from dotenv import load_dotenv
-                load_dotenv(ENV_FILE)
+                load_dotenv(ENV_FILE, override=True)
 
                 # Apply schema
                 from doc_builder.kg.neo4j import get_neo4j_client

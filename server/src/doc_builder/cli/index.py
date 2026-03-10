@@ -748,10 +748,10 @@ def main():
     # Try to find .env file in ~/.doc-builder/.env first, then current dir
     user_env = Path.home() / ".doc-builder" / ".env"
     if user_env.exists():
-        load_dotenv(user_env)
+        load_dotenv(user_env, override=True)
     else:
         # Fallback to current directory
-        load_dotenv()
+        load_dotenv(override=True)
     
     parser = argparse.ArgumentParser(
         description="Index documentation for MCP Doc Builder",
