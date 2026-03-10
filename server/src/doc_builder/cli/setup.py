@@ -14,10 +14,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import questionary
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
 console = Console()
@@ -33,7 +33,7 @@ ANTIGRAVITY_CONFIG = Path.home() / ".gemini" / "antigravity" / "mcp_config.json"
 class SetupWizard:
     """Interactive setup wizard."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.config: dict[str, str] = {}
         self.docker_available = False
 
@@ -89,11 +89,20 @@ class SetupWizard:
             console.print(f"  [yellow]⚠[/yellow] Python {py_version.major}.{py_version.minor} (3.11+ recommended)")
 
         # Check Docker
-        self.docker_available = self._check_docker()
-        if self.docker_available:
-            console.print("  [green]✓[/green] Docker available")
-        else:
-            console.print("  [yellow]⚠[/yellow] Docker not available (will need remote Neo4j)")
+        while True:
+            self.docker_available = self._check_docker()
+            if self.docker_available:
+                console.print("  [green]✓[/green] Docker available")
+                break
+                
+            console.print("  [yellow]⚠[/yellow] Docker engine is not running or not installed.")
+            retry = questionary.confirm("Would you like to start Docker Desktop and retry?", default=True).ask()
+            if not retry:
+                console.print("  [dim]Proceeding without Docker (you will need to use a remote Neo4j instance).[/dim]")
+                break
+                
+            console.print("[dim]Waiting for Docker to start...[/dim]")
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(3))
 
         console.print()
 
@@ -109,40 +118,19 @@ class SetupWizard:
         except Exception:
             return False
 
-    def _choose_option(self, prompt: str, options: list[str], default: int = 1) -> int:
-        """Display numbered options and get selection."""
-        console.print(f"\n[bold]{prompt}[/bold]")
-        for i, option in enumerate(options, 1):
-            marker = "[cyan]>[/cyan]" if i == default else " "
-            console.print(f"  {marker} {i}. {option}")
-
-        while True:
-            try:
-                choice = IntPrompt.ask(
-                    "Select",
-                    default=default,
-                    show_default=True,
-                )
-                if 1 <= choice <= len(options):
-                    return choice
-                console.print("[red]Invalid selection[/red]")
-            except KeyboardInterrupt:
-                console.print("\n[yellow]Setup cancelled[/yellow]")
-                sys.exit(0)
-
     def _prompt_required(self, prompt: str, default: str | None = None) -> str:
-        """Prompt for required input."""
+        """Prompt for required input using questionary."""
         while True:
-            value = Prompt.ask(prompt, default=default or "")
-            if value.strip():
+            value = str(questionary.text(prompt, default=default or "").ask() or "")
+            if value and value.strip():
                 return value.strip()
             console.print("[red]This field is required[/red]")
 
     def _prompt_secret(self, prompt: str, default: str | None = None) -> str:
         """Prompt for secret input (masked)."""
         while True:
-            value = Prompt.ask(prompt, password=True, default=default or "")
-            if value.strip():
+            value = str(questionary.password(prompt, default=default or "").ask() or "")
+            if value and value.strip():
                 return value.strip()
             console.print("[red]This field is required[/red]")
 
@@ -160,16 +148,15 @@ class SetupWizard:
         """Configure LLM provider."""
         console.print(Panel("[bold]Step 1: LLM Configuration[/bold]", border_style="blue"))
 
-        choice = self._choose_option(
+        choice = questionary.select(
             "Select LLM provider:",
-            [
+            choices=[
                 "Gemini Direct (Google AI Studio) - Recommended",
-                "LiteLLM Gateway (Enterprise/Proxy)",
-            ],
-            default=1,
-        )
+                "LiteLLM Gateway (Enterprise/Proxy)"
+            ]
+        ).ask()
 
-        if choice == 1:
+        if choice and "Gemini Direct" in choice:
             self._configure_gemini_direct()
         else:
             self._configure_litellm()
@@ -182,10 +169,10 @@ class SetupWizard:
 
         self.config["LLM_MODE"] = "gemini_direct"
         self.config["GEMINI_API_KEY"] = self._prompt_secret("Gemini API Key")
-        self.config["GEMINI_MODEL"] = Prompt.ask(
+        self.config["GEMINI_MODEL"] = questionary.text(
             "Model name",
             default="gemini-2.5-flash",
-        )
+        ).ask().strip()
 
         # Embedding model
         self.config["EMBEDDING_MODEL"] = "gemini-embedding-001"
@@ -205,20 +192,20 @@ class SetupWizard:
             default="https://your-gateway.com/",
         )
         self.config["LITELLM_API_KEY"] = self._prompt_secret("LiteLLM API Key")
-        self.config["LITELLM_MODEL"] = Prompt.ask(
+        self.config["LITELLM_MODEL"] = questionary.text(
             "Model name",
             default="gemini-2.5-flash",
-        )
+        ).ask().strip()
 
         # Embedding via gateway
-        self.config["EMBEDDING_MODEL"] = Prompt.ask(
+        self.config["EMBEDDING_MODEL"] = questionary.text(
             "Embedding model",
             default="text-embedding-3-small",
-        )
-        self.config["EMBEDDING_DIMENSIONS"] = Prompt.ask(
+        ).ask().strip()
+        self.config["EMBEDDING_DIMENSIONS"] = questionary.text(
             "Embedding dimensions",
             default="1536",
-        )
+        ).ask().strip()
 
         console.print(f"\n  [green]✓[/green] LiteLLM Gateway configured")
         console.print(f"    URL: {self.config['LITELLM_BASE_URL']}")
@@ -237,9 +224,9 @@ class SetupWizard:
             options.append("Docker (local) - Recommended")
         options.append("Remote Neo4j (Aura or self-hosted)")
 
-        choice = self._choose_option("Select Neo4j setup:", options, default=1)
+        choice = questionary.select("Select Neo4j setup:", choices=options).ask()
 
-        if self.docker_available and choice == 1:
+        if choice and "Docker" in choice:
             self._configure_neo4j_docker()
         else:
             self._configure_neo4j_remote()
@@ -254,11 +241,10 @@ class SetupWizard:
         self.config["NEO4J_USERNAME"] = "neo4j"
 
         # Generate or use existing password
-        default_password = "password123"
-        self.config["NEO4J_PASSWORD"] = Prompt.ask(
+        self.config["NEO4J_PASSWORD"] = questionary.text(
             "Neo4j password",
-            default=default_password,
-        )
+            default="password123",
+        ).ask().strip()
 
         console.print(f"\n  [green]✓[/green] Neo4j Docker configured")
         console.print(f"    URI: {self.config['NEO4J_URI']}")
@@ -272,10 +258,10 @@ class SetupWizard:
             "Neo4j URI",
             default="neo4j+s://xxxxx.databases.neo4j.io",
         )
-        self.config["NEO4J_USERNAME"] = Prompt.ask(
+        self.config["NEO4J_USERNAME"] = questionary.text(
             "Username",
             default="neo4j",
-        )
+        ).ask().strip()
         self.config["NEO4J_PASSWORD"] = self._prompt_secret("Password")
 
         console.print(f"\n  [green]✓[/green] Remote Neo4j configured")
@@ -289,7 +275,7 @@ class SetupWizard:
         """Configure security settings."""
         console.print(Panel("[bold]Step 3: Security Configuration[/bold]", border_style="blue"))
 
-        if Confirm.ask("\nEnable token authentication?", default=False):
+        if questionary.confirm("Enable token authentication?", default=False).ask():
             token = secrets.token_urlsafe(32)
             self.config["DOC_MCP_TOKEN"] = token
             console.print(f"\n  [green]✓[/green] Token generated: {self._mask_secret(token)}")
@@ -298,18 +284,18 @@ class SetupWizard:
 
         # Crawler settings
         console.print("\n[bold]Crawler Settings:[/bold]")
-        self.config["CRAWLER_MAX_DEPTH"] = Prompt.ask(
+        self.config["CRAWLER_MAX_DEPTH"] = questionary.text(
             "Max crawl depth",
             default="2",
-        )
-        self.config["CRAWLER_RATE_LIMIT"] = Prompt.ask(
+        ).ask().strip()
+        self.config["CRAWLER_RATE_LIMIT"] = questionary.text(
             "Rate limit (seconds between requests)",
             default="1.0",
-        )
-        self.config["CRAWLER_MAX_PAGES"] = Prompt.ask(
+        ).ask().strip()
+        self.config["CRAWLER_MAX_PAGES"] = questionary.text(
             "Max pages per source",
             default="500",
-        )
+        ).ask().strip()
 
         console.print()
 
@@ -389,8 +375,8 @@ class SetupWizard:
         """Start Neo4j Docker container."""
         console.print(Panel("[bold]Step 5: Start Neo4j[/bold]", border_style="blue"))
 
-        if not Confirm.ask("\nStart Neo4j Docker container?", default=True):
-            console.print("  [dim]Skipped. Run 'docker compose up -d' manually.[/dim]")
+        if not questionary.confirm("Start Neo4j Docker container?", default=True).ask():
+            console.print("  [dim]Skipped. Run manually.[/dim]")
             return
 
         with Progress(
@@ -401,12 +387,34 @@ class SetupWizard:
             task = progress.add_task("Starting Neo4j...", total=None)
 
             try:
-                # Update docker-compose.yml with password
-                self._update_docker_compose()
+                # Setup data directory
+                data_dir = PROJECT_DIR / "neo4j_data"
+                data_dir.mkdir(exist_ok=True)
+                password = self.config.get("NEO4J_PASSWORD", "password123")
+                
+                # Cleanup existing container named doc-builder-neo4j without stopping it if not needed,
+                # actually it's better to force remove it if starting anew
+                subprocess.run(
+                    ["docker", "rm", "-f", "doc-builder-neo4j"],
+                    capture_output=True,
+                )
 
+                # Pure docker run command (works without docker-compose.yml available locally)
                 result = subprocess.run(
-                    ["docker", "compose", "up", "-d"],
-                    cwd=PROJECT_DIR,
+                    [
+                        "docker", "run", "-d",
+                        "--name", "doc-builder-neo4j",
+                        "-p", "7688:7687",
+                        "-p", "7475:7474",
+                        "-e", f"NEO4J_AUTH=neo4j/{password}",
+                        "-e", "NEO4J_apoc_export_file_enabled=true",
+                        "-e", "NEO4J_apoc_import_file_enabled=true",
+                        "-e", "NEO4J_apoc_import_file_use__neo4j__config=true",
+                        "-e", "NEO4J_PLUGINS=[\"apoc\"]",
+                        "-v", f"{data_dir.absolute()}:/data",
+                        "--restart", "unless-stopped",
+                        "neo4j:5"
+                    ],
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -416,14 +424,15 @@ class SetupWizard:
                     progress.update(task, description="Waiting for Neo4j to be ready...")
 
                     # Wait for Neo4j to be healthy
-                    for _ in range(30):
+                    for _ in range(40):
                         check = subprocess.run(
-                            ["docker", "compose", "ps", "--format", "json"],
-                            cwd=PROJECT_DIR,
+                            ["docker", "inspect", "-f", "{{.State.Status}}", "doc-builder-neo4j"],
                             capture_output=True,
                             text=True,
                         )
-                        if "healthy" in check.stdout.lower():
+                        if "running" in check.stdout.lower():
+                            # Let's wait a couple of seconds for the DB to be actually responsive
+                            asyncio.get_event_loop().run_until_complete(asyncio.sleep(3))
                             break
                         asyncio.get_event_loop().run_until_complete(asyncio.sleep(2))
 
@@ -438,19 +447,6 @@ class SetupWizard:
 
         console.print()
 
-    def _update_docker_compose(self) -> None:
-        """Update docker-compose.yml with configured password."""
-        compose_file = PROJECT_DIR / "docker-compose.yml"
-        if compose_file.exists():
-            content = compose_file.read_text()
-            # Update password in environment
-            password = self.config.get("NEO4J_PASSWORD", "password123")
-            content = content.replace(
-                "NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-password123}",
-                f"NEO4J_AUTH=neo4j/{password}",
-            )
-            compose_file.write_text(content)
-
     # ─────────────────────────────────────────────────────────────────────────
     # Step 6: Apply Schema
     # ─────────────────────────────────────────────────────────────────────────
@@ -459,7 +455,7 @@ class SetupWizard:
         """Apply Neo4j schema."""
         console.print(Panel("[bold]Step 6: Apply Database Schema[/bold]", border_style="blue"))
 
-        if not Confirm.ask("\nApply Neo4j schema now?", default=True):
+        if not questionary.confirm("Apply Neo4j schema now?", default=True).ask():
             console.print("  [dim]Skipped. Schema will be applied on first use.[/dim]")
             return
 
@@ -479,7 +475,7 @@ class SetupWizard:
                 from doc_builder.kg.neo4j import get_neo4j_client
                 from doc_builder.kg.apply_schema import apply_schema
 
-                async def run_schema():
+                async def run_schema() -> dict[str, Any]:
                     client = get_neo4j_client()
                     await client.connect()
                     result = await apply_schema()
@@ -510,7 +506,7 @@ class SetupWizard:
             console.print("  [dim]Antigravity config directory not found. Skipping.[/dim]")
             return
 
-        if not Confirm.ask("\nConfigure Antigravity MCP integration?", default=True):
+        if not questionary.confirm("Configure Antigravity MCP integration?", default=True).ask():
             console.print("  [dim]Skipped.[/dim]")
             return
 
@@ -614,7 +610,7 @@ class SetupWizard:
         console.print()
 
 
-def main():
+def main() -> None:
     """Main entry point for setup wizard."""
     wizard = SetupWizard()
     try:
