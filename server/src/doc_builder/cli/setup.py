@@ -10,6 +10,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -102,7 +103,7 @@ class SetupWizard:
                 break
                 
             console.print("[dim]Waiting for Docker to start...[/dim]")
-            asyncio.get_event_loop().run_until_complete(asyncio.sleep(3))
+            time.sleep(3)
 
         console.print()
 
@@ -432,9 +433,9 @@ class SetupWizard:
                         )
                         if "running" in check.stdout.lower():
                             # Let's wait a couple of seconds for the DB to be actually responsive
-                            asyncio.get_event_loop().run_until_complete(asyncio.sleep(3))
+                            time.sleep(3)
                             break
-                        asyncio.get_event_loop().run_until_complete(asyncio.sleep(2))
+                        time.sleep(2)
 
                     console.print("\n  [green]✓[/green] Neo4j started successfully")
                     console.print("    Browser: http://localhost:7475")
